@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCS File Upload Portal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        /* ================== HEADER ================== */
+        .header {
+            background: linear-gradient(135deg, #1a73e8, #4285f4);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .header p {
+            margin: 8px 0 0 0;
+            opacity: 0.95;
+            font-size: 16px;
+        }
+
+        /* Rest of your existing styles */
+        form {
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        input[type="file"] { 
+            margin: 15px 0; 
+            width: 100%;
+        }
+        button {
+            background: #1a73e8;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover { background: #1557b0; }
+        button:disabled { background: #999; cursor: not-allowed; }
+
+        .progress-container {
+            margin-top: 25px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            background: #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .progress {
+            width: 0%;
+            height: 28px;
+            background: linear-gradient(90deg, #1a73e8, #34a853);
+            text-align: center;
+            line-height: 28px;
+            color: white;
+            font-weight: bold;
+            transition: width 0.4s ease;
+        }
+        .result { 
+            margin-top: 25px; 
+            padding: 15px; 
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+
+    <!-- ================== HEADER ================== -->
+    <div class="header">
+        <h1>Sales Data Upload</h1>
+        <p>Securely upload files directly to your GCS bucket</p>
+    </div>
+
+    <!-- Main Content -->
+    <form id="uploadForm" enctype="multipart/form-data">
+        <label><strong>Select a file to upload:</strong></label><br>
+        <input type="file" name="file" id="fileInput" required><br><br>
+        
+        <button type="submit" id="uploadBtn">Upload to GCS Bucket</button>
+    </form>
+
+    <!-- Progress Bar -->
+    <div class="progress-container" id="progressContainer">
+        <p><strong>Uploading...</strong> <span id="progressText">0%</span></p>
+        <div class="progress-bar">
+            <div class="progress" id="progressBar">0%</div>
+        </div>
+    </div>
+
+    <!-- Result Message -->
+    <div id="result" class="result" style="display:none;"></div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const resultDiv = document.getElementById('result');
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Reset UI
+            resultDiv.style.display = 'none';
+            progressContainer.style.display = 'block';
+            uploadBtn.disabled = true;
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = percent + '%';
+                        progressText.textContent = percent + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    const response = JSON.parse(xhr.responseText);
+                    
+                    if (response.success) {
+                        resultDiv.innerHTML = `
+                            <strong>✅ Upload Successful!</strong><br><br>
+                            <strong>File:</strong> ${response.filename}<br>
+                            <strong>Stored as:</strong> ${response.stored_as}<br><br>
+                            <a href="${response.url}" target="_blank" style="color: #1a73e8;">
+                                → View File in Google Cloud Storage
+                            </a>
+                        `;
+                        resultDiv.className = 'result success';
+                    } else {
+                        resultDiv.innerHTML = `<strong>❌ Error:</strong> ${response.error || 'Unknown error'}`;
+                        resultDiv.className = 'result error';
+                    }
+                    resultDiv.style.display = 'block';
+                });
+
+                xhr.addEventListener('error', function() {
+                    resultDiv.innerHTML = `<strong>❌ Upload failed. Please try again.</strong>`;
+                    resultDiv.className = 'result error';
+                    resultDiv.style.display = 'block';
+                });
+
+                xhr.open('POST', '/upload');
+                xhr.send(formData);
+
+            } catch (err) {
+                resultDiv.innerHTML = `<strong>❌ Error: ${err.message}</strong>`;
+                resultDiv.className = 'result error';
+                resultDiv.style.display = 'block';
+            } finally {
+                setTimeout(() => {
+                    uploadBtn.disabled = false;
+                    progressContainer.style.display = 'none';
+                    fileInput.value = '';
+                }, 2500);
+            }
+        });
+    </script>
+</body>
+</html>
